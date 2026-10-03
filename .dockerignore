@@ -1,0 +1,15 @@
+.git
+.dart_tool
+.flutter-plugins-dependencies
+.idea
+.vscode
+android
+ios
+test
+scripts
+build
+coverage
+*.log
+analyze_*.txt
+run_*.txt
+flutter_*.log
