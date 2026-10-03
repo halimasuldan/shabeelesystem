@@ -1,0 +1,134 @@
+rules_version = '2';
+
+// Shabelle Primary School - Firestore Security Rules
+// Roles are stored on /users/{uid}.role  ('admin' | 'parent' | 'teacher' | 'driver')
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return signedIn() && userDoc().role == 'admin';
+    }
+
+    function isTeacher() {
+      return signedIn() && userDoc().role == 'teacher';
+    }
+
+    function isDriver() {
+      return signedIn() && userDoc().role == 'driver';
+    }
+
+    function isParentOf(student) {
+      return signedIn()
+          && userDoc().role == 'parent'
+          && request.auth.uid in student.get('parentIds', []);
+    }
+
+    // ---------- Users ----------
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAdmin()
+        || (signedIn() && request.auth.uid == userId);
+      allow update, delete: if isAdmin()
+        || (signedIn() && request.auth.uid == userId
+            && !request.resource.data.diff(resource.data)
+                  .affectedKeys().hasAny(['role']));
+    }
+
+    // ---------- Students ----------
+    match /students/{studentId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---------- Parents / Teachers / Drivers ----------
+        match /parents/{docId}   { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /subjects/{docId}  { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /teachers/{docId}  { allow read: if isAdmin() || isTeacher(); allow write: if isAdmin(); }
+    match /drivers/{docId} {
+      allow get: if isAdmin()
+        || (isDriver() && (resource == null || resource.data.userId == request.auth.uid));
+      // list keeps the original constraint so query-based reads are unchanged.
+      allow list: if isAdmin()
+        || (isDriver() && resource.data.userId == request.auth.uid);
+      allow write: if isAdmin();
+    }
+
+    // ---------- Attendance ----------
+    match /attendance/{attendanceId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() || isTeacher();
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Exam Results ----------
+    match /exam_results/{resultId} {
+      allow read: if signedIn();
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    match /exam_definitions/{examId} {
+      allow read: if signedIn();
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    // ---------- Classes / Sections / School Info ----------
+    match /classes/{classId}  { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /sections/{docId}   { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /school_info/{docId} { allow read: if true; allow write: if isAdmin(); }
+
+    // ---------- Buses & Routes ----------
+    match /buses/{busId} {
+      allow read: if signedIn();
+      // Admin manages buses; drivers may only update status/location fields.
+      allow update: if isAdmin()
+        || (isDriver()
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['status', 'currentLocation', 'currentDriverId', 'updatedAt']));
+      allow create, delete: if isAdmin();
+    }
+
+    match /routes/{routeId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---------- Live Bus Locations ----------
+    match /bus_locations/{locationId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() || isDriver();
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Trips ----------
+    match /bus_trips/{tripId} {
+      allow read: if signedIn();
+      allow create: if isAdmin() || isDriver();
+      allow update: if isAdmin() || (isDriver() && resource.data.driverId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Pickup / Drop-off ----------
+    match /pickup_dropoff/{recordId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() || isDriver();
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Notifications ----------
+    match /notifications/{notificationId} {
+      allow read, update: if isAdmin()
+        || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isAdmin() || isTeacher() || isDriver();
+      allow delete: if isAdmin() || resource.data.userId == request.auth.uid;
+    }
+  }
+}

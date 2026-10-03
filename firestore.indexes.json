@@ -1,0 +1,22 @@
+﻿{
+  "indexes": [
+    { "collectionGroup": "notifications", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" } ] },
+    { "collectionGroup": "notifications", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "isRead", "order": "ASCENDING" } ] },
+    { "collectionGroup": "pickup_dropoff", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "studentId", "order": "ASCENDING" }, { "fieldPath": "parentUserIds", "arrayConfig": "CONTAINS" }, { "fieldPath": "timestamp", "order": "DESCENDING" } ] },
+    { "collectionGroup": "attendance", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "studentId", "order": "ASCENDING" }, { "fieldPath": "date", "order": "DESCENDING" } ] },
+    { "collectionGroup": "attendance", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "date", "order": "DESCENDING" } ] },
+    { "collectionGroup": "bus_trips", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "driverId", "order": "ASCENDING" }, { "fieldPath": "startTime", "order": "DESCENDING" } ] },
+    { "collectionGroup": "bus_trips", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "busId", "order": "ASCENDING" }, { "fieldPath": "startTime", "order": "DESCENDING" } ] },
+    { "collectionGroup": "bus_trips", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "busId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" } ] },
+    { "collectionGroup": "bus_locations", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "tripId", "order": "ASCENDING" }, { "fieldPath": "timestamp", "order": "ASCENDING" } ] },
+    { "collectionGroup": "exam_results", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "studentId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" } ] },
+    { "collectionGroup": "students", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "parentIds", "arrayConfig": "CONTAINS" }, { "fieldPath": "fullName", "order": "ASCENDING" } ] },
+    { "collectionGroup": "students", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "fullName", "order": "ASCENDING" } ] },
+    { "collectionGroup": "students", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "parentIds", "arrayConfig": "CONTAINS" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "fullName", "order": "ASCENDING" } ] },
+    { "collectionGroup": "students", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "busId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "fullName", "order": "ASCENDING" } ] },
+    { "collectionGroup": "students", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "classId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "fullName", "order": "ASCENDING" } ] },
+    { "collectionGroup": "teachers", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "isActive", "order": "ASCENDING" }, { "fieldPath": "name", "order": "ASCENDING" } ] },
+    { "collectionGroup": "drivers", "queryScope": "COLLECTION", "fields": [ { "fieldPath": "isActive", "order": "ASCENDING" }, { "fieldPath": "name", "order": "ASCENDING" } ] }
+  ],
+  "fieldOverrides": []
+}

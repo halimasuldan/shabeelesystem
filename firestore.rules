@@ -1,0 +1,239 @@
+rules_version = '2';
+
+// Shabelle Primary School - Firestore Security Rules
+// Roles are stored on /users/{uid}.role  ('admin' | 'parent' | 'teacher' | 'driver')
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // `get()` on a document that does not exist returns null, and dereferencing
+    // that null (e.g. `userDoc().role`) throws. Firestore reports a thrown rule
+    // as "permission-denied" for the whole request, so an account with no
+    // /users document would be denied by EVERY rule below. Guarding with
+    // `exists()` makes such an account match no role instead of erroring.
+    function userRole() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? userDoc().role
+        : null;
+    }
+
+    function isAdmin() {
+      return signedIn() && userRole() == 'admin';
+    }
+
+    function isTeacher() {
+      return signedIn() && userRole() == 'teacher';
+    }
+
+    function isDriver() {
+      return signedIn() && userRole() == 'driver';
+    }
+
+    // ---------- Driver / bus linkage helpers ----------
+    // The bus-driver link is recorded in several places depending on which admin
+    // screen wrote it: `buses/{id}.driverId` / `.driverUserId` are the assignment
+    // of record, while `drivers/{id}.busId` is the mirror the driver portal
+    // follows. Every form is consulted so a driver is recognised however the
+    // link was created. `get()` on a missing document returns null, so each read
+    // is guarded with `exists()` - dereferencing that null would throw and
+    // surface as a blanket permission-denied.
+    // A driver record is normally keyed by the auth uid, but legacy records use
+    // an arbitrary id with the uid kept in `userId`. Resolve either form back to
+    // the auth uid so the link is recognised however it was written.
+    function driverUserIdOf(driverDocId) {
+      return driverDocId != null
+              && exists(/databases/$(database)/documents/drivers/$(driverDocId))
+        ? get(/databases/$(database)/documents/drivers/$(driverDocId)).data.userId
+        : null;
+    }
+
+    function mirroredBusId() {
+      return exists(/databases/$(database)/documents/drivers/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.busId
+        : null;
+    }
+
+    // Read one field of the bus document. The rules language has no `if`/`let`
+    // statements inside function bodies, so the null guard is a ternary over
+    // `exists()`/`get()`; repeated calls on the same path are cached per request.
+    function busField(busId, field) {
+      return busId != null
+              && exists(/databases/$(database)/documents/buses/$(busId))
+        ? get(/databases/$(database)/documents/buses/$(busId)).data[field]
+        : null;
+    }
+
+    // True when the signed-in driver operates `busId`. Every form the app writes
+    // is consulted: the auth uid mirrored onto the bus (`driverUserId`), the
+    // driver document id (`driverId`, resolved through the driver record for
+    // legacy ids), and the reverse link on the driver document. Written as a
+    // single expression, and `&&` short-circuits so the extra reads are only
+    // paid for once the caller is known to be a driver.
+    function drivesBus(busId) {
+      return isDriver()
+        && busId != null
+        && (mirroredBusId() == busId
+          || busField(busId, 'driverUserId') == request.auth.uid
+          || busField(busId, 'driverId') == request.auth.uid
+          || driverUserIdOf(busField(busId, 'driverId')) == request.auth.uid);
+    }
+
+    // ---------- Users ----------
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAdmin()
+        || (signedIn() && request.auth.uid == userId);
+      allow update, delete: if isAdmin()
+        || (signedIn() && request.auth.uid == userId
+            && !request.resource.data.diff(resource.data)
+                  .affectedKeys().hasAny(['role']));
+    }
+
+    // ---------- Students ----------
+    match /students/{studentId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+
+      // The driver portal's pickup and drop-off screens are the only non-admin
+      // place that edits a student. Scope that to the status fields, and to
+      // students riding a bus the driver actually operates - otherwise every
+      // status change failed with permission-denied right after the student
+      // list finally appeared.
+      allow update: if drivesBus(resource.data.busId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['pickupStatus', 'dropoffStatus', 'updatedAt']);
+    }
+
+    // ---------- Parents / Teachers / Drivers ----------
+    match /parents/{docId}   { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /subjects/{docId}  { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /teachers/{docId}  { allow read: if isAdmin() || isTeacher(); allow write: if isAdmin(); }
+    match /drivers/{docId} {
+      // Admins manage every driver document.
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+
+      // A driver reads their own document with `.doc(uid)`, so matching the
+      // document id against the auth uid is sufficient. This deliberately does
+      // NOT touch `resource`: `resource` is null when the document does not
+      // exist, and reading `resource.data` on null throws, which would surface
+      // as "permission-denied" instead of a clean "not found".
+      allow get: if signedIn() && request.auth.uid == docId;
+
+      // Legacy driver records are keyed by an arbitrary id and carry the auth
+      // uid in `userId`. Support those too, but null-check `resource` first.
+      allow get: if signedIn()
+        && resource != null
+        && resource.data.userId == request.auth.uid;
+
+      // Listing drivers is admin-only, EXCEPT for the one query the driver
+      // portal needs: finding its own legacy record by auth uid. Firestore
+      // evaluates `list` rules per candidate document, and this app's lookup is
+      // constrained to `where('userId', == uid)`, so every document the query
+      // can return already satisfies this rule and no other driver's record is
+      // reachable.
+      allow list: if isAdmin()
+        || (signedIn()
+            && resource != null
+            && resource.data.userId == request.auth.uid);
+    }
+
+    // ---------- Attendance ----------
+    match /attendance/{attendanceId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() || isTeacher();
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Exam Results ----------
+    match /exam_results/{resultId} {
+      allow read: if signedIn();
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    match /exam_definitions/{examId} {
+      allow read: if signedIn();
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    // ---------- Classes / Sections / School Info ----------
+    match /classes/{classId}  { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /sections/{docId}   { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /school_info/{docId} { allow read: if true; allow write: if isAdmin(); }
+
+    // ---------- Buses & Routes ----------
+    match /buses/{busId} {
+      allow read: if signedIn();
+      // Admin manages buses; drivers may only update status/location fields.
+      allow update: if isAdmin()
+        || (drivesBus(busId)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly([
+                   'status', 'currentLocation', 'currentDriverId', 'updatedAt',
+                   'currentLatitude', 'currentLongitude', 'lastLocationUpdate',
+                   'tripId'
+                 ]));
+      allow create, delete: if isAdmin();
+    }
+
+    match /routes/{routeId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---------- Live Bus Locations ----------
+    match /bus_locations/{locationId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() || drivesBus(locationId);
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Trips ----------
+    match /bus_trips/{tripId} {
+      allow read: if signedIn();
+      allow create: if isAdmin() || isDriver();
+      allow update: if isAdmin() || (isDriver() && resource.data.driverId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Pickup / Drop-off ----------
+    // Every driver status change appends a timestamped event here; this is what
+    // the parent app reads to show when a child was picked up and dropped off.
+    match /pickup_dropoff/{recordId} {
+      // The record denormalises the linked parents' auth uids into
+      // `parentUserIds`, so a parent can be granted read access to their own
+      // child's events without exposing every student's movements to any
+      // signed-in account. `get()`-style fallbacks are not possible here: a
+      // parent profile id cannot be derived from the auth uid inside rules.
+      // `resource != null` guards a `get` on a document that does not exist:
+      // reading `resource.data` on null throws, and a thrown rule surfaces as
+      // "permission-denied" instead of a clean "not found".
+      // `get('parentUserIds', [])` (rather than a `'key' in resource.data`
+      // probe) is used so a record written before the field existed evaluates
+      // to an empty list instead of risking a rule evaluation error.
+      allow read: if isAdmin() || isDriver()
+        || (signedIn()
+            && resource != null
+            && request.auth.uid in resource.data.get('parentUserIds', []));
+      allow create, update: if isAdmin() || isDriver();
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Notifications ----------
+    match /notifications/{notificationId} {
+      allow read, update: if isAdmin()
+        || (signedIn() && resource != null && resource.data.userId == request.auth.uid);
+      allow create: if isAdmin() || isTeacher() || isDriver();
+      allow delete: if isAdmin()
+        || (signedIn() && resource != null && resource.data.userId == request.auth.uid);
+    }
+  }
+}

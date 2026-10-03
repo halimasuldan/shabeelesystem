@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "98014689684",
+    "project_id": "shabelleapp-e8ffd",
+    "storage_bucket": "shabelleapp-e8ffd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:98014689684:android:feb5f5e51d07fa8faab781",
+        "android_client_info": {
+          "package_name": "com.example.shabelle_system"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCQyIVc99Q70D2Jln-t8JObGxATBDkiVkg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
